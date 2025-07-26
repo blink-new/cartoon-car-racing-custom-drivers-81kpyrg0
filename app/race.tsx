@@ -15,42 +15,104 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 const { width, height } = Dimensions.get('window');
 
-const cars = [
-  { id: 1, emoji: '🚗', name: 'Спидстер' },
-  { id: 2, emoji: '🚙', name: 'Внедорожник' },
-  { id: 3, emoji: '🏎️', name: 'Формула' },
-  { id: 4, emoji: '🚐', name: 'Фургон' },
-  { id: 5, emoji: '🚕', name: 'Такси' },
-  { id: 6, emoji: '🚓', name: 'Полиция' },
-];
-
-const obstacles = ['🌳', '🪨', '🚧', '⛽', '🛑'];
+interface Obstacle {
+  id: number;
+  x: number;
+  y: number;
+  type: 'rock' | 'oil' | 'cone';
+}
 
 export default function RaceScreen() {
   const { carId, driverPhoto } = useLocalSearchParams();
-  const selectedCar = cars.find(car => car.id === parseInt(carId as string));
-  
-  const [score, setScore] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
   const [gameOver, setGameOver] = useState(false);
+  const [score, setScore] = useState(0);
   const [speed, setSpeed] = useState(2);
-  const [obstacleList, setObstacleList] = useState<Array<{id: number, x: number, y: number, emoji: string}>>([]);
+  const [obstacles, setObstacles] = useState<Obstacle[]>([]);
+  const [carPosition, setCarPosition] = useState(width / 2 - 30);
   
-  const carPosition = useRef(new Animated.ValueXY({ x: width / 2 - 40, y: height - 150 })).current;
-  const roadOffset = useRef(new Animated.Value(0)).current;
+  const carY = height - 150;
+  const animatedValue = useRef(new Animated.Value(0)).current;
   const gameLoopRef = useRef<NodeJS.Timeout | null>(null);
   const obstacleIdRef = useRef(0);
 
-  // Pan responder for car movement
+  // Car movement with pan responder
   const panResponder = PanResponder.create({
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderMove: (_, gestureState) => {
+    onPanResponderMove: (evt, gestureState) => {
       if (!gameStarted || gameOver) return;
       
-      const newX = Math.max(20, Math.min(width - 100, gestureState.moveX - 40));
-      carPosition.setValue({ x: newX, y: height - 150 });
+      const newX = Math.max(20, Math.min(width - 80, carPosition + gestureState.dx));
+      setCarPosition(newX);
     },
   });
+
+  // Generate obstacles
+  const generateObstacle = () => {
+    const types: ('rock' | 'oil' | 'cone')[] = ['rock', 'oil', 'cone'];
+    const newObstacle: Obstacle = {
+      id: obstacleIdRef.current++,
+      x: Math.random() * (width - 60) + 20,
+      y: -50,
+      type: types[Math.floor(Math.random() * types.length)],
+    };
+    setObstacles(prev => [...prev, newObstacle]);
+  };
+
+  // Check collision
+  const checkCollision = (carX: number, carY: number, obstacle: Obstacle) => {
+    const carWidth = 60;
+    const carHeight = 40;
+    const obstacleSize = 40;
+    
+    return (
+      carX < obstacle.x + obstacleSize &&
+      carX + carWidth > obstacle.x &&
+      carY < obstacle.y + obstacleSize &&
+      carY + carHeight > obstacle.y
+    );
+  };
+
+  // Game loop
+  useEffect(() => {
+    if (gameStarted && !gameOver) {
+      gameLoopRef.current = setInterval(() => {
+        // Move obstacles
+        setObstacles(prev => {
+          const updated = prev.map(obstacle => ({
+            ...obstacle,
+            y: obstacle.y + speed
+          })).filter(obstacle => obstacle.y < height + 50);
+
+          // Check collisions
+          updated.forEach(obstacle => {
+            if (checkCollision(carPosition, carY, obstacle)) {
+              setGameOver(true);
+            }
+          });
+
+          return updated;
+        });
+
+        // Increase score
+        setScore(prev => prev + 1);
+
+        // Increase speed gradually
+        setSpeed(prev => Math.min(prev + 0.01, 8));
+
+        // Generate new obstacles
+        if (Math.random() < 0.02) {
+          generateObstacle();
+        }
+      }, 50);
+    }
+
+    return () => {
+      if (gameLoopRef.current) {
+        clearInterval(gameLoopRef.current);
+      }
+    };
+  }, [gameStarted, gameOver, carPosition, speed]);
 
   // Start game
   const startGame = () => {
@@ -58,209 +120,166 @@ export default function RaceScreen() {
     setGameOver(false);
     setScore(0);
     setSpeed(2);
-    setObstacleList([]);
+    setObstacles([]);
+    setCarPosition(width / 2 - 30);
     
     // Start road animation
     Animated.loop(
-      Animated.timing(roadOffset, {
-        toValue: 100,
+      Animated.timing(animatedValue, {
+        toValue: 1,
         duration: 1000,
-        useNativeDriver: false,
+        useNativeDriver: true,
       })
     ).start();
-    
-    // Game loop
-    gameLoopRef.current = setInterval(() => {
-      updateGame();
-    }, 50);
   };
-
-  // Update game logic
-  const updateGame = () => {
-    setScore(prev => prev + 1);
-    
-    // Increase speed gradually
-    setSpeed(prev => Math.min(prev + 0.01, 8));
-    
-    // Add obstacles randomly
-    if (Math.random() < 0.02) {
-      const newObstacle = {
-        id: obstacleIdRef.current++,
-        x: Math.random() * (width - 60) + 30,
-        y: -50,
-        emoji: obstacles[Math.floor(Math.random() * obstacles.length)]
-      };
-      setObstacleList(prev => [...prev, newObstacle]);
-    }
-    
-    // Move obstacles down
-    setObstacleList(prev => 
-      prev.map(obstacle => ({
-        ...obstacle,
-        y: obstacle.y + speed * 3
-      })).filter(obstacle => obstacle.y < height + 50)
-    );
-  };
-
-  // Check collisions
-  useEffect(() => {
-    if (!gameStarted || gameOver) return;
-    
-    const carX = carPosition.x._value;
-    const carY = height - 150;
-    
-    obstacleList.forEach(obstacle => {
-      const distance = Math.sqrt(
-        Math.pow(carX - obstacle.x, 2) + Math.pow(carY - obstacle.y, 2)
-      );
-      
-      if (distance < 50) {
-        endGame();
-      }
-    });
-  }, [obstacleList, gameStarted, gameOver]);
 
   // End game
   const endGame = () => {
     setGameOver(true);
-    setGameStarted(false);
-    
-    if (gameLoopRef.current) {
-      clearInterval(gameLoopRef.current);
-    }
-    
-    roadOffset.stopAnimation();
-    
-    setTimeout(() => {
-      router.push({
-        pathname: '/results',
-        params: { 
-          score: score,
-          carId: carId,
-          driverPhoto: driverPhoto 
-        }
-      });
-    }, 1500);
+    router.push({
+      pathname: '/results',
+      params: { 
+        score: score.toString(),
+        carId: carId,
+        driverPhoto: driverPhoto 
+      }
+    });
   };
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (gameLoopRef.current) {
-        clearInterval(gameLoopRef.current);
-      }
-    };
-  }, []);
+  // Get obstacle emoji
+  const getObstacleEmoji = (type: string) => {
+    switch (type) {
+      case 'rock': return '🪨';
+      case 'oil': return '🛢️';
+      case 'cone': return '🚧';
+      default: return '🪨';
+    }
+  };
+
+  if (!gameStarted) {
+    return (
+      <LinearGradient
+        colors={['#87CEEB', '#98D8E8']}
+        style={styles.container}
+      >
+        <View style={styles.startScreen}>
+          <Text style={styles.readyTitle}>Готов к гонке?</Text>
+          
+          <View style={styles.carPreview}>
+            <Text style={styles.carEmoji}>🏎️</Text>
+            {driverPhoto && (
+              <View style={styles.driverInCar}>
+                <Image source={{ uri: driverPhoto as string }} style={styles.driverPhoto} />
+              </View>
+            )}
+          </View>
+
+          <Text style={styles.instructions}>
+            Управляй машинкой, избегай препятствий!
+          </Text>
+
+          <TouchableOpacity
+            style={styles.startButton}
+            onPress={startGame}
+            activeOpacity={0.8}
+          >
+            <LinearGradient
+              colors={['#FF6B35', '#F7931E']}
+              style={styles.startButtonGradient}
+            >
+              <Text style={styles.startButtonText}>🏁 СТАРТ!</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.backButtonText}>← Назад</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
+  }
 
   return (
-    <View style={styles.container}>
+    <View style={styles.gameContainer}>
       {/* Road Background */}
       <LinearGradient
-        colors={['#90EE90', '#32CD32']}
+        colors={['#4A4A4A', '#2A2A2A']}
         style={styles.road}
       >
-        {/* Road Lines */}
-        <Animated.View 
+        {/* Road lines */}
+        <Animated.View
           style={[
             styles.roadLines,
             {
               transform: [{
-                translateY: roadOffset.interpolate({
-                  inputRange: [0, 100],
+                translateY: animatedValue.interpolate({
+                  inputRange: [0, 1],
                   outputRange: [0, 100],
                 })
               }]
             }
           ]}
         >
-          {Array.from({ length: 20 }, (_, i) => (
-            <View key={i} style={[styles.roadLine, { top: i * 100 }]} />
+          {Array.from({ length: 10 }).map((_, index) => (
+            <View key={index} style={styles.roadLine} />
           ))}
         </Animated.View>
-        
+
+        {/* Game UI */}
+        <View style={styles.gameUI}>
+          <View style={styles.scoreContainer}>
+            <Text style={styles.scoreText}>Очки: {score}</Text>
+            <Text style={styles.speedText}>Скорость: {speed.toFixed(1)}</Text>
+          </View>
+
+          <TouchableOpacity
+            style={styles.pauseButton}
+            onPress={endGame}
+          >
+            <Text style={styles.pauseButtonText}>⏸️</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Obstacles */}
-        {obstacleList.map(obstacle => (
+        {obstacles.map(obstacle => (
           <View
             key={obstacle.id}
             style={[
               styles.obstacle,
-              { left: obstacle.x, top: obstacle.y }
+              {
+                left: obstacle.x,
+                top: obstacle.y,
+              }
             ]}
           >
-            <Text style={styles.obstacleEmoji}>{obstacle.emoji}</Text>
+            <Text style={styles.obstacleEmoji}>
+              {getObstacleEmoji(obstacle.type)}
+            </Text>
           </View>
         ))}
-        
+
         {/* Player Car */}
-        <Animated.View
+        <View
           style={[
             styles.playerCar,
             {
-              transform: carPosition.getTranslateTransform()
+              left: carPosition,
+              top: carY,
             }
           ]}
           {...panResponder.panHandlers}
         >
-          <Text style={styles.carEmoji}>{selectedCar?.emoji}</Text>
+          <Text style={styles.carEmoji}>🏎️</Text>
           {driverPhoto && (
-            <Image 
-              source={{ uri: driverPhoto as string }} 
-              style={styles.driverPhotoInCar} 
-            />
+            <View style={styles.driverInCar}>
+              <Image source={{ uri: driverPhoto as string }} style={styles.driverPhoto} />
+            </View>
           )}
-        </Animated.View>
-      </LinearGradient>
-
-      {/* UI Overlay */}
-      <View style={styles.uiOverlay}>
-        {/* Score */}
-        <View style={styles.scoreContainer}>
-          <Text style={styles.scoreText}>ОЧКИ: {score}</Text>
-          <Text style={styles.speedText}>СКОРОСТЬ: {speed.toFixed(1)}</Text>
         </View>
-
-        {/* Start Game Button */}
-        {!gameStarted && !gameOver && (
-          <View style={styles.startOverlay}>
-            <Text style={styles.readyText}>ГОТОВ К ГОНКЕ?</Text>
-            <TouchableOpacity
-              style={styles.startGameButton}
-              onPress={startGame}
-              activeOpacity={0.8}
-            >
-              <LinearGradient
-                colors={['#FF6B35', '#F7931E']}
-                style={styles.startGameButtonGradient}
-              >
-                <Text style={styles.startGameButtonText}>🏁 СТАРТ!</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Game Over */}
-        {gameOver && (
-          <View style={styles.gameOverOverlay}>
-            <Text style={styles.gameOverText}>💥 АВАРИЯ!</Text>
-            <Text style={styles.finalScoreText}>Финальный счет: {score}</Text>
-          </View>
-        )}
-
-        {/* Controls Hint */}
-        {gameStarted && !gameOver && (
-          <View style={styles.controlsHint}>
-            <Text style={styles.controlsText}>👆 Перетаскивай машинку</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Back Button */}
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => router.back()}
-      >
-        <Text style={styles.backButtonText}>← НАЗАД</Text>
-      </TouchableOpacity>
+      </LinearGradient>
     </View>
   );
 }
@@ -268,7 +287,90 @@ export default function RaceScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#87CEEB',
+  },
+  startScreen: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  readyTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#2C3E50',
+    textAlign: 'center',
+    marginBottom: 40,
+    textShadowColor: '#FFFFFF',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  carPreview: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 30,
+  },
+  carEmoji: {
+    fontSize: 100,
+  },
+  driverInCar: {
+    position: 'absolute',
+    top: 15,
+    left: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
+  },
+  driverPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  instructions: {
+    fontSize: 18,
+    color: '#2C3E50',
+    textAlign: 'center',
+    marginBottom: 40,
+    fontWeight: '600',
+  },
+  startButton: {
+    width: width * 0.7,
+    height: 70,
+    borderRadius: 35,
+    marginBottom: 20,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  startButtonGradient: {
+    flex: 1,
+    borderRadius: 35,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startButtonText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    letterSpacing: 2,
+  },
+  backButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2C3E50',
+  },
+  gameContainer: {
+    flex: 1,
   },
   road: {
     flex: 1,
@@ -277,159 +379,72 @@ const styles = StyleSheet.create({
   roadLines: {
     position: 'absolute',
     left: width / 2 - 2,
+    top: 0,
     width: 4,
-    height: height * 2,
+    height: height,
+    flexDirection: 'column',
+    justifyContent: 'space-around',
   },
   roadLine: {
-    position: 'absolute',
     width: 4,
-    height: 40,
-    backgroundColor: '#FFFFFF',
-    opacity: 0.8,
-  },
-  obstacle: {
-    position: 'absolute',
-    width: 50,
-    height: 50,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  obstacleEmoji: {
-    fontSize: 40,
-  },
-  playerCar: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  carEmoji: {
-    fontSize: 60,
-  },
-  driverPhotoInCar: {
-    position: 'absolute',
-    top: 10,
-    width: 30,
     height: 30,
-    borderRadius: 15,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
+    backgroundColor: '#FFFFFF',
+    marginVertical: 10,
   },
-  uiOverlay: {
+  gameUI: {
     position: 'absolute',
-    top: 0,
+    top: 50,
     left: 0,
     right: 0,
-    bottom: 0,
-    pointerEvents: 'box-none',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    zIndex: 10,
   },
   scoreContainer: {
-    position: 'absolute',
-    top: 60,
-    left: 20,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
     paddingHorizontal: 15,
     paddingVertical: 10,
-    borderRadius: 15,
+    borderRadius: 20,
   },
   scoreText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#FFFFFF',
   },
   speedText: {
+    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#FFD700',
   },
-  startOverlay: {
-    position: 'absolute',
-    top: '40%',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-  },
-  readyText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 30,
-    textShadowColor: '#FFFFFF',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
-  },
-  startGameButton: {
-    width: 200,
-    height: 60,
-    borderRadius: 30,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-  },
-  startGameButtonGradient: {
-    flex: 1,
-    borderRadius: 30,
+  pauseButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  startGameButtonText: {
+  pauseButtonText: {
     fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
   },
-  gameOverOverlay: {
+  obstacle: {
     position: 'absolute',
-    top: '40%',
-    left: 0,
-    right: 0,
+    width: 40,
+    height: 40,
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    paddingVertical: 30,
+    justifyContent: 'center',
+    zIndex: 5,
   },
-  gameOverText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FF4444',
-    marginBottom: 15,
+  obstacleEmoji: {
+    fontSize: 30,
   },
-  finalScoreText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  controlsHint: {
+  playerCar: {
     position: 'absolute',
-    bottom: 100,
-    left: 0,
-    right: 0,
+    width: 60,
+    height: 40,
     alignItems: 'center',
-  },
-  controlsText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    backgroundColor: 'rgba(255, 255, 255, 0.8)',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 15,
-  },
-  backButton: {
-    position: 'absolute',
-    top: 50,
-    right: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  backButtonText: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2C3E50',
+    justifyContent: 'center',
+    zIndex: 10,
   },
 });

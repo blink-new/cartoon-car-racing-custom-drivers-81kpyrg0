@@ -17,7 +17,7 @@ export default function HomeScreen() {
           <Text style={styles.title}>🏎️</Text>
           <Text style={styles.gameTitle}>CARTOON</Text>
           <Text style={styles.gameTitle}>CAR RACING</Text>
-          <Text style={styles.subtitle}>Твоя фотография - твой водитель!</Text>
+          <Text style={styles.subtitle}>Гонки с друзьями и ИИ соперниками!</Text>
         </View>
 
         {/* Decorative Cars */}
@@ -30,19 +30,26 @@ export default function HomeScreen() {
         {/* Play Button */}
         <TouchableOpacity
           style={styles.playButton}
-          onPress={() => router.push('/car-selection')}
+          onPress={() => router.push('/drivers-setup')}
           activeOpacity={0.8}
         >
           <LinearGradient
             colors={['#FF6B35', '#F7931E']}
             style={styles.playButtonGradient}
           >
-            <Text style={styles.playButtonText}>ИГРАТЬ</Text>
+            <Text style={styles.playButtonText}>ИГРАТЬ 4 МАШИНКИ</Text>
           </LinearGradient>
         </TouchableOpacity>
 
         {/* Secondary Buttons */}
         <View style={styles.secondaryButtons}>
+          <TouchableOpacity 
+            style={styles.secondaryButton}
+            onPress={() => router.push('/car-selection')}
+          >
+            <Text style={styles.secondaryButtonText}>🏎️ ОДИНОЧНАЯ ИГРА</Text>
+          </TouchableOpacity>
+          
           <TouchableOpacity style={styles.secondaryButton}>
             <Text style={styles.secondaryButtonText}>🏆 РЕКОРДЫ</Text>
           </TouchableOpacity>

@@ -6,39 +6,27 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
-const cars = [
-  { id: 1, emoji: '🚗', name: 'Спидстер' },
-  { id: 2, emoji: '🚙', name: 'Внедорожник' },
-  { id: 3, emoji: '🏎️', name: 'Формула' },
-  { id: 4, emoji: '🚐', name: 'Фургон' },
-  { id: 5, emoji: '🚕', name: 'Такси' },
-  { id: 6, emoji: '🚓', name: 'Полиция' },
-];
-
 export default function ResultsScreen() {
   const { score, carId, driverPhoto } = useLocalSearchParams();
   const [bestScore, setBestScore] = useState(0);
   const [isNewRecord, setIsNewRecord] = useState(false);
-  
-  const selectedCar = cars.find(car => car.id === parseInt(carId as string));
-  const currentScore = parseInt(score as string);
-  
-  const scaleAnim = new Animated.Value(0);
-  const fadeAnim = new Animated.Value(0);
+  const [animatedValue] = useState(new Animated.Value(0));
+
+  const currentScore = parseInt(score as string) || 0;
 
   useEffect(() => {
     loadBestScore();
     
-    // Animations
+    // Start celebration animation
     Animated.sequence([
-      Animated.timing(scaleAnim, {
+      Animated.timing(animatedValue, {
         toValue: 1,
-        duration: 500,
+        duration: 1000,
         useNativeDriver: true,
       }),
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
+      Animated.timing(animatedValue, {
+        toValue: 0,
+        duration: 1000,
         useNativeDriver: true,
       }),
     ]).start();
@@ -49,7 +37,7 @@ export default function ResultsScreen() {
       const savedBestScore = await AsyncStorage.getItem('bestScore');
       const best = savedBestScore ? parseInt(savedBestScore) : 0;
       setBestScore(best);
-      
+
       if (currentScore > best) {
         setIsNewRecord(true);
         await AsyncStorage.setItem('bestScore', currentScore.toString());
@@ -61,11 +49,10 @@ export default function ResultsScreen() {
   };
 
   const getScoreRating = (score: number) => {
-    if (score < 100) return { emoji: '🥉', text: 'Новичок', color: '#CD7F32' };
-    if (score < 300) return { emoji: '🥈', text: 'Хорошо', color: '#C0C0C0' };
-    if (score < 500) return { emoji: '🥇', text: 'Отлично', color: '#FFD700' };
-    if (score < 1000) return { emoji: '🏆', text: 'Мастер', color: '#FF6B35' };
-    return { emoji: '👑', text: 'Легенда', color: '#9C27B0' };
+    if (score < 100) return { emoji: '🥉', title: 'Новичок', message: 'Неплохо для начала!' };
+    if (score < 300) return { emoji: '🥈', title: 'Гонщик', message: 'Отличная езда!' };
+    if (score < 500) return { emoji: '🥇', title: 'Профи', message: 'Потрясающий результат!' };
+    return { emoji: '👑', title: 'Чемпион', message: 'Невероятно!' };
   };
 
   const rating = getScoreRating(currentScore);
@@ -95,68 +82,70 @@ export default function ResultsScreen() {
     >
       <View style={styles.content}>
         {/* Results Header */}
-        <Animated.View 
-          style={[
-            styles.headerSection,
-            { transform: [{ scale: scaleAnim }] }
-          ]}
-        >
-          <Text style={styles.resultsTitle}>🏁 РЕЗУЛЬТАТЫ ГОНКИ</Text>
+        <View style={styles.header}>
+          <Animated.View
+            style={[
+              styles.celebrationContainer,
+              {
+                transform: [{
+                  scale: animatedValue.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [1, 1.2],
+                  })
+                }]
+              }
+            ]}
+          >
+            <Text style={styles.celebrationEmoji}>{rating.emoji}</Text>
+          </Animated.View>
           
-          {isNewRecord && (
-            <View style={styles.newRecordBanner}>
-              <Text style={styles.newRecordText}>🎉 НОВЫЙ РЕКОРД! 🎉</Text>
-            </View>
-          )}
-        </Animated.View>
+          <Text style={styles.resultTitle}>
+            {isNewRecord ? '🎉 НОВЫЙ РЕКОРД! 🎉' : 'Финиш!'}
+          </Text>
+          <Text style={styles.ratingTitle}>{rating.title}</Text>
+          <Text style={styles.ratingMessage}>{rating.message}</Text>
+        </View>
 
-        {/* Score Section */}
-        <Animated.View 
-          style={[
-            styles.scoreSection,
-            { opacity: fadeAnim }
-          ]}
-        >
-          <View style={styles.mainScoreCard}>
-            <Text style={styles.scoreLabel}>ТВОЙ СЧЕТ</Text>
-            <Text style={styles.mainScore}>{currentScore}</Text>
-            
-            <View style={[styles.ratingBadge, { backgroundColor: rating.color }]}>
-              <Text style={styles.ratingEmoji}>{rating.emoji}</Text>
-              <Text style={styles.ratingText}>{rating.text}</Text>
-            </View>
+        {/* Score Display */}
+        <View style={styles.scoreSection}>
+          <View style={styles.scoreCard}>
+            <LinearGradient
+              colors={['#FFFFFF', '#F0F0F0']}
+              style={styles.scoreCardGradient}
+            >
+              <Text style={styles.scoreLabel}>Твой результат</Text>
+              <Text style={styles.currentScore}>{currentScore}</Text>
+              <Text style={styles.scoreUnit}>очков</Text>
+            </LinearGradient>
           </View>
 
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>ЛУЧШИЙ СЧЕТ</Text>
-              <Text style={styles.statValue}>{bestScore}</Text>
-            </View>
-            
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>ДИСТАНЦИЯ</Text>
-              <Text style={styles.statValue}>{Math.floor(currentScore / 10)}м</Text>
-            </View>
+          <View style={styles.bestScoreCard}>
+            <LinearGradient
+              colors={isNewRecord ? ['#FFD700', '#FFA500'] : ['#E0E0E0', '#C0C0C0']}
+              style={styles.scoreCardGradient}
+            >
+              <Text style={styles.scoreLabel}>Лучший результат</Text>
+              <Text style={styles.bestScoreText}>{bestScore}</Text>
+              <Text style={styles.scoreUnit}>очков</Text>
+            </LinearGradient>
           </View>
-        </Animated.View>
+        </View>
 
-        {/* Player Summary */}
-        <View style={styles.playerSummary}>
-          <View style={styles.playerInfo}>
-            <Text style={styles.carEmoji}>{selectedCar?.emoji}</Text>
+        {/* Driver & Car Display */}
+        <View style={styles.driverSection}>
+          <Text style={styles.driverTitle}>Твоя машинка:</Text>
+          <View style={styles.carContainer}>
+            <Text style={styles.carEmoji}>🏎️</Text>
             {driverPhoto && (
-              <Image 
-                source={{ uri: driverPhoto as string }} 
-                style={styles.driverPhoto} 
-              />
+              <View style={styles.driverInCar}>
+                <Image source={{ uri: driverPhoto as string }} style={styles.driverPhoto} />
+              </View>
             )}
           </View>
-          <Text style={styles.carName}>{selectedCar?.name}</Text>
-          <Text style={styles.driverLabel}>Водитель: Ты!</Text>
         </View>
 
         {/* Action Buttons */}
-        <View style={styles.actionButtons}>
+        <View style={styles.buttonSection}>
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={playAgain}
@@ -166,7 +155,7 @@ export default function ResultsScreen() {
               colors={['#FF6B35', '#F7931E']}
               style={styles.buttonGradient}
             >
-              <Text style={styles.primaryButtonText}>🔄 ИГРАТЬ СНОВА</Text>
+              <Text style={styles.primaryButtonText}>🔄 ИГРАТЬ ЕЩЁ</Text>
             </LinearGradient>
           </TouchableOpacity>
 
@@ -176,7 +165,7 @@ export default function ResultsScreen() {
               onPress={changeCar}
               activeOpacity={0.8}
             >
-              <Text style={styles.secondaryButtonText}>🚗 СМЕНИТЬ МАШИНУ</Text>
+              <Text style={styles.secondaryButtonText}>🚗 Сменить машинку</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -184,37 +173,37 @@ export default function ResultsScreen() {
               onPress={goHome}
               activeOpacity={0.8}
             >
-              <Text style={styles.secondaryButtonText}>🏠 ГЛАВНОЕ МЕНЮ</Text>
+              <Text style={styles.secondaryButtonText}>🏠 Главное меню</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Achievements */}
-        <View style={styles.achievementsSection}>
-          <Text style={styles.achievementsTitle}>ДОСТИЖЕНИЯ:</Text>
-          <View style={styles.achievementsList}>
+        {/* Achievement Badges */}
+        <View style={styles.achievementSection}>
+          <Text style={styles.achievementTitle}>Достижения:</Text>
+          <View style={styles.badges}>
             {currentScore >= 100 && (
-              <View style={styles.achievement}>
-                <Text style={styles.achievementEmoji}>🎯</Text>
-                <Text style={styles.achievementText}>Первая сотня</Text>
+              <View style={styles.badge}>
+                <Text style={styles.badgeEmoji}>🏁</Text>
+                <Text style={styles.badgeText}>100+</Text>
               </View>
             )}
             {currentScore >= 300 && (
-              <View style={styles.achievement}>
-                <Text style={styles.achievementEmoji}>🚀</Text>
-                <Text style={styles.achievementText}>Скоростной</Text>
+              <View style={styles.badge}>
+                <Text style={styles.badgeEmoji}>⚡</Text>
+                <Text style={styles.badgeText}>300+</Text>
               </View>
             )}
             {currentScore >= 500 && (
-              <View style={styles.achievement}>
-                <Text style={styles.achievementEmoji}>⭐</Text>
-                <Text style={styles.achievementText}>Звездный гонщик</Text>
+              <View style={styles.badge}>
+                <Text style={styles.badgeEmoji}>🔥</Text>
+                <Text style={styles.badgeText}>500+</Text>
               </View>
             )}
             {isNewRecord && (
-              <View style={styles.achievement}>
-                <Text style={styles.achievementEmoji}>🏆</Text>
-                <Text style={styles.achievementText}>Рекордсмен</Text>
+              <View style={styles.badge}>
+                <Text style={styles.badgeEmoji}>👑</Text>
+                <Text style={styles.badgeText}>Рекорд</Text>
               </View>
             )}
           </View>
@@ -227,156 +216,137 @@ export default function ResultsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 50,
   },
   content: {
     flex: 1,
     paddingHorizontal: 20,
-    alignItems: 'center',
+    paddingTop: 50,
   },
-  headerSection: {
+  header: {
     alignItems: 'center',
     marginBottom: 30,
   },
-  resultsTitle: {
-    fontSize: 28,
+  celebrationContainer: {
+    marginBottom: 15,
+  },
+  celebrationEmoji: {
+    fontSize: 80,
+  },
+  resultTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#2C3E50',
     textAlign: 'center',
+    marginBottom: 10,
     textShadowColor: '#FFFFFF',
-    textShadowOffset: { width: 2, height: 2 },
-    textShadowRadius: 4,
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
-  newRecordBanner: {
-    backgroundColor: '#FFD700',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+  ratingTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FF6B35',
+    textAlign: 'center',
+    marginBottom: 5,
+  },
+  ratingMessage: {
+    fontSize: 16,
+    color: '#2C3E50',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  scoreSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 30,
+    gap: 15,
+  },
+  scoreCard: {
+    flex: 1,
+    height: 120,
     borderRadius: 20,
-    marginTop: 15,
-    borderWidth: 3,
-    borderColor: '#FFA500',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
-  newRecordText: {
-    fontSize: 18,
+  bestScoreCard: {
+    flex: 1,
+    height: 120,
+    borderRadius: 20,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  scoreCardGradient: {
+    flex: 1,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+  },
+  scoreLabel: {
+    fontSize: 14,
+    color: '#666666',
+    fontWeight: 'bold',
+    marginBottom: 5,
+  },
+  currentScore: {
+    fontSize: 36,
+    fontWeight: 'bold',
+    color: '#FF6B35',
+  },
+  bestScoreText: {
+    fontSize: 36,
     fontWeight: 'bold',
     color: '#2C3E50',
   },
-  scoreSection: {
+  scoreUnit: {
+    fontSize: 12,
+    color: '#666666',
+    fontWeight: 'bold',
+  },
+  driverSection: {
     alignItems: 'center',
     marginBottom: 30,
   },
-  mainScoreCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingVertical: 30,
-    paddingHorizontal: 40,
-    borderRadius: 25,
-    alignItems: 'center',
-    marginBottom: 20,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-  },
-  scoreLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#666',
-    marginBottom: 10,
-  },
-  mainScore: {
-    fontSize: 48,
+  driverTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#2C3E50',
     marginBottom: 15,
   },
-  ratingBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  ratingEmoji: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  ratingText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 15,
-  },
-  statCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 15,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.8)',
-  },
-  statLabel: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#666',
-    marginBottom: 5,
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-  },
-  playerSummary: {
-    alignItems: 'center',
-    marginBottom: 30,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    paddingVertical: 20,
-    paddingHorizontal: 30,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-  },
-  playerInfo: {
+  carContainer: {
     position: 'relative',
     alignItems: 'center',
-    marginBottom: 10,
+    justifyContent: 'center',
   },
   carEmoji: {
-    fontSize: 60,
+    fontSize: 80,
   },
-  driverPhoto: {
+  driverInCar: {
     position: 'absolute',
     top: 10,
+    left: 15,
     width: 35,
     height: 35,
     borderRadius: 17.5,
+    overflow: 'hidden',
     borderWidth: 3,
     borderColor: '#FFFFFF',
   },
-  carName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2C3E50',
-    marginBottom: 5,
-  },
-  driverLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#666',
-  },
-  actionButtons: {
+  driverPhoto: {
     width: '100%',
-    alignItems: 'center',
+    height: '100%',
+  },
+  buttonSection: {
     marginBottom: 30,
   },
   primaryButton: {
-    width: '80%',
+    width: '100%',
     height: 60,
     borderRadius: 30,
     marginBottom: 20,
@@ -393,19 +363,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primaryButtonText: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
     letterSpacing: 1,
   },
   secondaryButtons: {
-    width: '100%',
     gap: 10,
   },
   secondaryButton: {
     backgroundColor: 'rgba(255, 255, 255, 0.3)',
     paddingVertical: 15,
-    paddingHorizontal: 30,
+    paddingHorizontal: 20,
     borderRadius: 25,
     alignItems: 'center',
     borderWidth: 2,
@@ -416,37 +385,36 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#2C3E50',
   },
-  achievementsSection: {
-    width: '100%',
+  achievementSection: {
     alignItems: 'center',
   },
-  achievementsTitle: {
+  achievementTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#2C3E50',
     marginBottom: 15,
   },
-  achievementsList: {
+  badges: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 10,
   },
-  achievement: {
-    flexDirection: 'row',
+  badge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 20,
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 215, 0, 0.3)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 15,
+    minWidth: 70,
     borderWidth: 2,
-    borderColor: 'rgba(255, 215, 0, 0.5)',
+    borderColor: '#FFD700',
   },
-  achievementEmoji: {
-    fontSize: 16,
-    marginRight: 5,
+  badgeEmoji: {
+    fontSize: 20,
+    marginBottom: 2,
   },
-  achievementText: {
+  badgeText: {
     fontSize: 12,
     fontWeight: 'bold',
     color: '#2C3E50',
